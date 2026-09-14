@@ -6,7 +6,6 @@ const SERVER_PORT = 8080;
 
 console.log('💰 NEXORA Global Subscription Billing Stress Engine Initializing...');
 
-// Generate a separate clean corporate account entry to stress test multi-tenant payment pipelines
 const randomCompany = `Stress Financial Node ${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 const mockEmail = `billing-stress-${crypto.randomBytes(4).toString('hex')}@apex.nexora`;
 
@@ -27,7 +26,6 @@ const signupOptions = {
   }
 };
 
-// Phase 1: Register a discrete financial client footprint to acquire an isolated tracking key
 const signupReq = http.request(signupOptions, (res) => {
   let rawData = '';
   res.on('data', (chunk) => { rawData += chunk; });
@@ -36,11 +34,10 @@ const signupReq = http.request(signupOptions, (res) => {
       const authData = JSON.parse(rawData);
       if (authData.status === "SUCCESS") {
         const harvestedApiKey = authData.apiKey;
-        console.log(`\n💳 [BILLING AUTH HANDSHAKE SUCCESS] Financial Tracking Link Established!`);
+        console.log(`\n¼ [BILLING AUTH HANDSHAKE SUCCESS] Financial Tracking Link Established!`);
         console.log(`🏢 Stress Asset Account: ${authData.companyName}`);
         console.log(`🎫 Active Target Key: ${harvestedApiKey}\n`);
         
-        // Phase 2: Launch the infinite payment webhook blast using the freshly harvested corporate key
         launchBillingStress(harvestedApiKey);
       } else {
         console.error('❌ Billing registration rejected:', authData.message);
@@ -58,10 +55,11 @@ signupReq.write(signupPayload);
 signupReq.end();
 
 function launchBillingStress(targetApiKey: string) {
-  console.or = '🚀 Launching infinite concurrent global payment stream nodes...';
+  // FIXED: Corrected console.or to console.log
+  console.log('🚀 Launching infinite concurrent global payment stream nodes...');
   
   setInterval(() => {
-    const randomAmount = Math.floor(Math.random() * 50000) + 1000; // $10.00 to $500.00
+    const randomAmount = Math.floor(Math.random() * 50000) + 1000;
     const mockEventId = 'evt_' + crypto.randomBytes(12).toString('hex');
     const mockSessionId = 'cs_test_' + crypto.randomBytes(16).toString('hex');
 
