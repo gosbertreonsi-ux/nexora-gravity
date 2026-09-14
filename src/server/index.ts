@@ -4,10 +4,16 @@ import pg from 'pg';
 import Stripe from 'stripe';
 import { ChaosEngine } from '../crypto/chaosEngine';
 import { AIPredicativeWorker } from '../ai/predictiveWorker.js';
+import fastifyCors from '@fastify/cors';
+import { MonitorAgent } from '../telemetry/monitorAgent.ts';
 
 
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
+fastify.register(fastifyCors, {
+  origin: "*", // Replace with your frontend domain in production
+  methods: ["GET", "POST", "PUT", "DELETE"]
+});
 
 // 1. Initialize High-Velocity Postgres Connections & Stripe API bindings
 const pool = new Pool({
@@ -160,5 +166,11 @@ const start = async () => {
     process.exit(1);
   }
 };
+
+// Schedule automated system health checks to execute every 5 seconds
+setInterval(() => {
+  MonitorAgent.sampleSystemVitals();
+}, 5000);
+
 
 start();
