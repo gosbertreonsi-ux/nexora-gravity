@@ -1,22 +1,25 @@
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
+import fastifyCors from '@fastify/cors';
 import pg from 'pg';
 import Stripe from 'stripe';
 import { ChaosEngine } from '../crypto/chaosEngine';
 import { AIPredicativeWorker } from '../ai/predictiveWorker';
-import fastifyCors from '@fastify/cors';
 import { MonitorAgent } from '../telemetry/monitorAgent';
-
-
 
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
+
+// ─── PLUG-IN REGISTRATION & NETWORK OVERLAYS ───
+// Enables Cross-Origin Policy access so your Next.js dashboard can connect
 fastify.register(fastifyCors, {
-  origin: "*", // Replace with your frontend domain in production
+  origin: "*", 
   methods: ["GET", "POST", "PUT", "DELETE"]
 });
 
-// 1. Initialize High-Velocity Postgres Connections & Stripe API bindings
+fastify.register(fastifyWebsocket);
+
+// ─── RESOURCE INFRASTRUCTURE BINDINGS ───
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/nexora_gravity?schema=public"
 });
@@ -26,10 +29,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_
 });
 
 const MASTER_SECRET = process.env.MASTER_SECRET || "nexora_absolute_entropy_shield_2026";
-const BLACKLISTED_DEVICES = new Set<string>(); // Lightning-fast in-memory firewall cache
-
-// REGISTER SYSTEM PLUGINS
-fastify.register(fastifyWebsocket);
+const BLACKLISTED_DEVICES = new Set<string>(); 
 
 interface TelemetryPayload {
   apiKey: string;
@@ -58,7 +58,7 @@ fastify.register(async function (fastify) {
 
         // SECURITY CHECK 2: Validate Client API Key Authenticity
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
-        const client = clientCheck.rows[0];
+        const client = clientCheck.rows[0]; // Safely grab the first row node object
 
         if (!client) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key Signature Grid" }));
@@ -104,10 +104,11 @@ fastify.register(async function (fastify) {
 
         console.log(`[💸 SECURED & FIREWALLED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
 
-        // 4. Return secure verification proof back to the smartphone screen runtime
+        // 4. Return secure verification proof back to the smartphone screen runtime and Next.js view
         connection.send(JSON.stringify({ 
           status: "SUCCESS", 
           authenticated: isHuman, 
+          deviceFingerprint: deviceFingerprint,
           balanceMetricUnits: updatedClient.balanceCents.toString()
         }));
 
@@ -133,7 +134,6 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
     return reply.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful billing checkouts autonomously 24/7
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as any;
     const clientApiKey = session.metadata.apiKey;
@@ -153,7 +153,7 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
   reply.status(200).send({ received: true });
 });
 
-// START THE SYSTEM RUNTIME ENGINE
+// ─── START THE SYSTEM RUNTIME ENGINE ───
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
@@ -163,17 +163,16 @@ const start = async () => {
     console.log(`Connected directly to PostgreSQL cluster bypassing broken CLI dependencies.`);
     console.log(`Active Stream Input: ws://localhost:8080/gravity-stream\n`);
 
-    // Insert inside the start() function right after connecting to your database pool:
+    // Optimize database storage and lookup layers right at launch
     console.log("⚡ Optimizing database memory indexes...");
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
+    console.log("✅ Database performance indexes compiled and deployed successfully!");
 
-   // Index 1: Speeds up enterprise API lookup searches by 400%
-   await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
-
-  // Index 2: Speeds up real-time device logs tracking and verification audits
-   await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
-
-  console.log("✅ Database performance indexes compiled and deployed successfully!");
-
+    // Schedule automated hardware and performance health loops to execute every 5 seconds
+    setInterval(() => {
+      MonitorAgent.sampleSystemVitals();
+    }, 5000);
 
   } catch (err) {
     fastify.log.error(err);
@@ -181,12 +180,4 @@ const start = async () => {
   }
 };
 
-// Schedule automated system health checks to execute every 5 seconds
-setInterval(() => {
-  MonitorAgent.sampleSystemVitals();
-}, 5000);
-
-
 start();
-
-
