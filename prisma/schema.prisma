@@ -1,0 +1,33 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Represents enterprise clients (Banks, Apps) consuming your verification layers
+model EnterpriseClient {
+  id           String        @id @default(uuid())
+  companyName  String
+  apiKey       String        @unique
+  balanceCents BigInt        @default(0) // Tracks micro-revenue securely (BigInt avoids decimal drift)
+  createdAt    DateTime      @default(now())
+  validations  ValidationLog[]
+}
+
+// Ingests thousands of mobile hardware telemetry hits per second
+model ValidationLog {
+  id                 String           @id @default(uuid())
+  enterpriseClientId String
+  client             EnterpriseClient @relation(fields: [enterpriseClientId], references: [id])
+  deviceFingerprint  String           // Compressed hardware identifier
+  isHuman            Boolean
+  chaosHash          String           // The Dynamic Chaos Matrix verification code
+  revenueGenerated   Float            @default(0.00001) // Micro-fee captured per check
+  timestamp          DateTime         @default(now())
+
+  @@index([timestamp])
+  @@index([enterpriseClientId])
+}
