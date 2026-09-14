@@ -5,7 +5,8 @@ import Stripe from 'stripe';
 import { ChaosEngine } from '../crypto/chaosEngine';
 import { AIPredicativeWorker } from '../ai/predictiveWorker.js';
 import fastifyCors from '@fastify/cors';
-import { MonitorAgent } from '../telemetry/monitorAgent.ts';
+import { MonitorAgent } from '../telemetry/monitorAgent';
+
 
 
 const { Pool } = pg;
