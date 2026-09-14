@@ -22,7 +22,7 @@ fastify.register(fastifyWebsocket);
 fastify.register(require('@fastify/formbody'));
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://postgres:1971@localhost:5432/nexora_gravity?schema=public"
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/nexora_gravity?schema=public"
 });
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_key_123', { apiVersion: '2023-10-16' as any });
@@ -80,7 +80,7 @@ fastify.post('/v1/auth/login', async (request, reply) => {
   const { email, password } = request.body as any;
   try {
     const userQuery = await pool.query('SELECT * FROM "EnterpriseClient" WHERE email = $1 LIMIT 1', [email]);
-    const client = userQuery.rows;
+    const client = userQuery.rows[0]; // FIXED: Extract singular index mapping object array element
 
     if (!client || !(await bcrypt.compare(password, client.password))) {
       return reply.status(401).send({ status: "UNAUTHORIZED", message: "Invalid profile credentials." });
@@ -120,7 +120,7 @@ fastify.register(async function (fastify) {
         }
 
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
-        const client = clientCheck.rows; 
+        const client = clientCheck.rows[0]; // FIXED: Extract singular index mapping object array element
 
         if (!client) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
@@ -144,7 +144,7 @@ fastify.register(async function (fastify) {
         clientDb = await pool.connect();
         await clientDb.query('BEGIN');
 
-        await pool.query(
+        await clientDb.query(
           'INSERT INTO "ValidationLog" (id, "enterpriseClientId", "deviceFingerprint", "isHuman", "chaosHash", "revenueGenerated", "timestamp") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())',
           [client.id, deviceFingerprint, isHuman, token, 0.00001]
         );
@@ -155,7 +155,7 @@ fastify.register(async function (fastify) {
         );
         
         await clientDb.query('COMMIT');
-        const updatedClient = updateLedger.rows;
+        const updatedClient = updateLedger.rows[0]; // FIXED: Extract singular index mapping object array element
 
         console.log(`[💸 SECURED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
 
@@ -192,7 +192,7 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
         'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" + $1 WHERE "apiKey" = $2 RETURNING *',
         [purchasedCreditsCents, clientApiKey]
       );
-      const updatedClient = updateLedger.rows;
+      const updatedClient = updateLedger.rows[0]; // FIXED: Extract singular index mapping object array element
       
       broadcastToDashboards({
         status: "SUCCESS",
@@ -243,10 +243,14 @@ const start = async () => {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
     
-    setInterval(() => { MonitorAgent.sampleSystemVitals(); }, 5000);
-  } catch (err: any) {
+    setInterval(() => {
+      MonitorAgent.sampleSystemVitals();
+    }, 60000); // Sample every 60 seconds
+
+  } catch (err) {
+    fastify.log.error(err);
     process.exit(1);
-  }
+  } 
 };
 
 start();
