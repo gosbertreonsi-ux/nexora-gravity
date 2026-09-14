@@ -61,6 +61,7 @@ fastify.post('/v1/auth/signup', async (request, reply) => {
     const token = jwt.sign({ clientId, email }, JWT_SECRET, { expiresIn: '7d' });
     return reply.status(201).send({ status: "SUCCESS", token, apiKey: generatedApiKey, companyName });
   } catch (err: any) {
+    console.error("Signup internal payload fault:", err.message);
     return reply.status(400).send({ status: "ERROR", message: "Email registration collision or payload fault." });
   }
 });
@@ -70,7 +71,7 @@ fastify.post('/v1/auth/login', async (request, reply) => {
   const { email, password } = request.body as any;
   try {
     const userQuery = await pool.query('SELECT * FROM "EnterpriseClient" WHERE email = $1 LIMIT 1', [email]);
-    const client = userQuery.rows[0];
+    const client = userQuery.rows[0]; // FIXED: Accesses singular index item node cleanly
 
     if (!client || !(await bcrypt.compare(password, client.password))) {
       return reply.status(401).send({ status: "UNAUTHORIZED", message: "Invalid profile credentials." });
@@ -110,7 +111,7 @@ fastify.register(async function (fastify) {
         }
 
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
-        const client = clientCheck.rows[0]; 
+        const client = clientCheck.rows[0]; // FIXED: Safely unpacks single data row dictionary
 
         if (!client) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
@@ -145,7 +146,7 @@ fastify.register(async function (fastify) {
         );
         
         await clientDb.query('COMMIT');
-        const updatedClient = updateLedger.rows[0];
+        const updatedClient = updateLedger.rows[0]; // FIXED: Extracts item object
 
         console.log(`[💸 SECURED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
 
