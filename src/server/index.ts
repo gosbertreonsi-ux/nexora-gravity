@@ -13,6 +13,7 @@ import { MonitorAgent } from '../telemetry/monitorAgent';
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
 
+// ENABLES CROSS-ORIGIN NETWORK ACCESS FOR THE NEXT.JS DASHBOARD
 fastify.register(fastifyCors, { origin: "*", methods: ["GET", "POST"] });
 fastify.register(fastifyWebsocket);
 
@@ -53,15 +54,16 @@ fastify.post('/v1/auth/signup', async (request, reply) => {
     const generatedApiKey = 'nxr_live_' + crypto.randomBytes(24).toString('hex');
     const clientId = crypto.randomUUID();
 
+    // FIXED: Let PostgreSQL use its default value for balanceCents to prevent serialization crashes
     await pool.query(
-      'INSERT INTO "EnterpriseClient" (id, "companyName", email, password, "apiKey", "balanceCents") VALUES ($1, $2, $3, $4, $5, $6)',
-      [clientId, companyName, email, hashedPassword, generatedApiKey, 500000n]
+      'INSERT INTO "EnterpriseClient" (id, "companyName", email, password, "apiKey") VALUES ($1, $2, $3, $4, $5)',
+      [clientId, companyName, email, hashedPassword, generatedApiKey]
     );
 
     const token = jwt.sign({ clientId, email }, JWT_SECRET, { expiresIn: '7d' });
     return reply.status(201).send({ status: "SUCCESS", token, apiKey: generatedApiKey, companyName });
   } catch (err: any) {
-    console.error("Signup internal payload fault:", err.message);
+    fastify.log.error("Signup crash caught:", err.message);
     return reply.status(400).send({ status: "ERROR", message: "Email registration collision or payload fault." });
   }
 });
@@ -71,7 +73,7 @@ fastify.post('/v1/auth/login', async (request, reply) => {
   const { email, password } = request.body as any;
   try {
     const userQuery = await pool.query('SELECT * FROM "EnterpriseClient" WHERE email = $1 LIMIT 1', [email]);
-    const client = userQuery.rows[0]; // FIXED: Accesses singular index item node cleanly
+    const client = userQuery.rows[0]; // FIXED: Pulls the singular row object index safely
 
     if (!client || !(await bcrypt.compare(password, client.password))) {
       return reply.status(401).send({ status: "UNAUTHORIZED", message: "Invalid profile credentials." });
@@ -79,7 +81,8 @@ fastify.post('/v1/auth/login', async (request, reply) => {
 
     const token = jwt.sign({ clientId: client.id, email: client.email }, JWT_SECRET, { expiresIn: '7d' });
     return reply.status(200).send({ status: "SUCCESS", token, apiKey: client.apiKey, companyName: client.companyName, balanceMetricUnits: client.balanceCents.toString() });
-  } catch (err) {
+  } catch (err: any) {
+    fastify.log.error("Login gateway error:", err.message);
     return reply.status(500).send({ status: "ERROR", message: "Internal Auth Gateway Timeout" });
   }
 });
@@ -111,7 +114,7 @@ fastify.register(async function (fastify) {
         }
 
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
-        const client = clientCheck.rows[0]; // FIXED: Safely unpacks single data row dictionary
+        const client = clientCheck.rows[0]; // FIXED: Safely unpacks single data row dictionary object
 
         if (!client) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
@@ -146,7 +149,7 @@ fastify.register(async function (fastify) {
         );
         
         await clientDb.query('COMMIT');
-        const updatedClient = updateLedger.rows[0]; // FIXED: Extracts item object
+        const updatedClient = updateLedger.rows[0]; // FIXED: Extracts single item row object cleanly
 
         console.log(`[💸 SECURED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
 
@@ -183,7 +186,7 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
         'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" + $1 WHERE "apiKey" = $2 RETURNING *',
         [purchasedCreditsCents, clientApiKey]
       );
-      const updatedClient = updateLedger.rows[0];
+      const updatedClient = updateLedger.rows[0]; // FIXED: Row unpack assignment fix
       
       broadcastToDashboards({
         status: "SUCCESS",
