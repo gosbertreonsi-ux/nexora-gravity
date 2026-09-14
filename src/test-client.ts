@@ -7,16 +7,16 @@ const MASTER_SECRET = "nexora_absolute_entropy_shield_2026";
 
 console.log('⚡ NEXORA Gravity Dynamic Device Fleet Simulator Initializing...');
 
-// Generate fully isolated corporate parameters
 const uniqueId = crypto.randomBytes(8).toString('hex').toUpperCase();
 const randomCompany = `Simulation Fleet Node ${uniqueId}`;
 const mockEmail = `fleet-${uniqueId.toLowerCase()}@nexus.nexora`;
 
-const signupPayload = JSON.stringify({
+// Encode data into clean form-urlencoded layout to match cloud firewalls
+const signupPayload = new URLSearchParams({
   companyName: randomCompany,
   email: mockEmail,
   password: "hardened_simulation_secret_2026"
-});
+}).toString();
 
 const signupOptions = {
   hostname: SERVER_HOST,
@@ -24,13 +24,11 @@ const signupOptions = {
   path: '/v1/auth/signup',
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Accept': 'application/json',
+    'Content-Type': 'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(signupPayload)
   }
 };
 
-// Phase 1: Fire an automated registration handshake across secure HTTPS to harvest a live key
 const signupReq = https.request(signupOptions, (res) => {
   let rawData = '';
   res.on('data', (chunk) => { rawData += chunk; });
@@ -43,14 +41,12 @@ const signupReq = https.request(signupOptions, (res) => {
         console.log(`🏢 Entity: ${authData.companyName}`);
         console.log(`🎫 Active Key: ${harvestedApiKey}\n`);
         
-        // Phase 2: Instantly spin up smartphone telemetry loops using secure WebSockets
         startDeviceSimulation(harvestedApiKey);
       } else {
         console.error('❌ Authentication block validation drop:', authData.message || rawData);
       }
     } catch (e) {
       console.error('❌ Failed to parse corporate auth response matrix:', e);
-      console.log('Raw Server Response was:', rawData);
     }
   });
 });
