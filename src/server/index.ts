@@ -17,6 +17,7 @@ const fastify = Fastify({ logger: true });
 fastify.register(fastifyCors, { origin: "*", methods: ["GET", "POST"] });
 fastify.register(fastifyWebsocket);
 
+// ADAPTIVE DATABASE STRING: Uses the live cloud URL variable on Railway, fallbacks locally
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres:1971@localhost:5432/nexora_gravity?schema=public"
 });
@@ -54,7 +55,6 @@ fastify.post('/v1/auth/signup', async (request, reply) => {
     const generatedApiKey = 'nxr_live_' + crypto.randomBytes(24).toString('hex');
     const clientId = crypto.randomUUID();
 
-    // FIXED: Let PostgreSQL use its default value for balanceCents to prevent serialization crashes
     await pool.query(
       'INSERT INTO "EnterpriseClient" (id, "companyName", email, password, "apiKey") VALUES ($1, $2, $3, $4, $5)',
       [clientId, companyName, email, hashedPassword, generatedApiKey]
@@ -63,7 +63,7 @@ fastify.post('/v1/auth/signup', async (request, reply) => {
     const token = jwt.sign({ clientId, email }, JWT_SECRET, { expiresIn: '7d' });
     return reply.status(201).send({ status: "SUCCESS", token, apiKey: generatedApiKey, companyName });
   } catch (err: any) {
-    fastify.log.error("Signup crash caught:", err.message);
+    fastify.log.error("Signup error caught: ", err.message);
     return reply.status(400).send({ status: "ERROR", message: "Email registration collision or payload fault." });
   }
 });
@@ -73,7 +73,7 @@ fastify.post('/v1/auth/login', async (request, reply) => {
   const { email, password } = request.body as any;
   try {
     const userQuery = await pool.query('SELECT * FROM "EnterpriseClient" WHERE email = $1 LIMIT 1', [email]);
-    const client = userQuery.rows[0]; // FIXED: Pulls the singular row object index safely
+    const client = userQuery.rows[0];
 
     if (!client || !(await bcrypt.compare(password, client.password))) {
       return reply.status(401).send({ status: "UNAUTHORIZED", message: "Invalid profile credentials." });
@@ -82,7 +82,6 @@ fastify.post('/v1/auth/login', async (request, reply) => {
     const token = jwt.sign({ clientId: client.id, email: client.email }, JWT_SECRET, { expiresIn: '7d' });
     return reply.status(200).send({ status: "SUCCESS", token, apiKey: client.apiKey, companyName: client.companyName, balanceMetricUnits: client.balanceCents.toString() });
   } catch (err: any) {
-    fastify.log.error("Login gateway error:", err.message);
     return reply.status(500).send({ status: "ERROR", message: "Internal Auth Gateway Timeout" });
   }
 });
@@ -114,7 +113,7 @@ fastify.register(async function (fastify) {
         }
 
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
-        const client = clientCheck.rows[0]; // FIXED: Safely unpacks single data row dictionary object
+        const client = clientCheck.rows[0]; 
 
         if (!client) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
@@ -149,7 +148,7 @@ fastify.register(async function (fastify) {
         );
         
         await clientDb.query('COMMIT');
-        const updatedClient = updateLedger.rows[0]; // FIXED: Extracts single item row object cleanly
+        const updatedClient = updateLedger.rows[0];
 
         console.log(`[💸 SECURED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
 
@@ -186,7 +185,7 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
         'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" + $1 WHERE "apiKey" = $2 RETURNING *',
         [purchasedCreditsCents, clientApiKey]
       );
-      const updatedClient = updateLedger.rows[0]; // FIXED: Row unpack assignment fix
+      const updatedClient = updateLedger.rows[0];
       
       broadcastToDashboards({
         status: "SUCCESS",
@@ -206,13 +205,43 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
+    // Binds to 0.0.0.0 to satisfy cloud runtime mapping regulations
     await fastify.listen({ port, host: '0.0.0.0' });
     console.log(`\n🚀 NEXORA GRAVITY ONLINE WITH ACCREDITED AUTH SIGNUPS`);
     console.log(`========================================================================`);
     
+    // Auto-generate necessary tables inside the clean cloud schema environment automatically at boot
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "EnterpriseClient" (
+        id UUID PRIMARY KEY,
+        "companyName" TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        "apiKey" TEXT UNIQUE NOT NULL,
+        "balanceCents" BIGINT DEFAULT 500000,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "ValidationLog" (
+        id UUID PRIMARY KEY,
+        "enterpriseClientId" UUID REFERENCES "EnterpriseClient"(id),
+        "deviceFingerprint" TEXT NOT NULL,
+        "isHuman" BOOLEAN NOT NULL,
+        "chaosHash" TEXT NOT NULL,
+        "revenueGenerated" DOUBLE PRECISION DEFAULT 0.00001,
+        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+
     await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
+    
+    // Starts monitor agent loop
     setInterval(() => { MonitorAgent.sampleSystemVitals(); }, 5000);
-  } catch (err) {
+  } catch (err: any) {
+    console.error("Fatal startup crash: ", err.message);
     process.exit(1);
   }
 };
