@@ -3,6 +3,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import pg from 'pg';
 import Stripe from 'stripe';
 import { ChaosEngine } from '../crypto/chaosEngine';
+import { AIPredicativeWorker } from '../ai/predictiveWorker';
 
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
@@ -17,9 +18,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_
 });
 
 const MASTER_SECRET = process.env.MASTER_SECRET || "nexora_absolute_entropy_shield_2026";
-const BLACKLISTED_DEVICES = new Set<string>();
+const BLACKLISTED_DEVICES = new Set<string>(); // Lightning-fast in-memory firewall cache
 
-// REGISTER SYSTEM WEB PLUGINS
+// REGISTER SYSTEM PLUGINS
 fastify.register(fastifyWebsocket);
 
 interface TelemetryPayload {
@@ -31,7 +32,7 @@ interface TelemetryPayload {
   token: string;
 }
 
-// ─── ENDPOINT 1: THE CORE AUTOMATED STREAMING LEDGER ───
+// ─── ENDPOINT 1: THE CORE AUTOMATED STREAMING LEDGER (WEBSOCKET) ───
 fastify.register(async function (fastify) {
   fastify.get('/gravity-stream', { websocket: true }, (connection, req) => {
     connection.on('message', async (message) => {
@@ -40,43 +41,51 @@ fastify.register(async function (fastify) {
         const payload: TelemetryPayload = JSON.parse(message.toString());
         const { apiKey, deviceFingerprint, gyroWobble, lightFrequency, clockDrift, token } = payload;
 
+        // SECURITY CHECK 1: Immediate Blacklist/Firewall Check
         if (BLACKLISTED_DEVICES.has(deviceFingerprint)) {
           connection.send(JSON.stringify({ status: "BLOCKED", reason: "Device blacklisted." }));
           connection.terminate();
           return;
         }
 
+        // SECURITY CHECK 2: Validate Client API Key Authenticity
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
         const client = clientCheck.rows[0];
 
         if (!client) {
-          connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
+          connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key Signature Grid" }));
           return;
         }
 
-        // PREVENT FRAUD: Enforce pre-paid balance rules before validating traffic
+        // SECURITY CHECK 3: Enforce Pre-paid Balance Limits
         if (BigInt(client.balanceCents) <= 0n) {
           connection.send(JSON.stringify({ status: "REJECTED", reason: "Insufficient Infrastructure Balance Credits" }));
           return;
         }
 
-        if (gyroWobble > 0.5 || gyroWobble < -0.5 || lightFrequency < 0) {
+        // SECURITY CHECK 4: Advanced AI/ML Predictive Worker Filter
+        const isBotSignature = AIPredicativeWorker.shouldIsolateDevice({ gyroWobble, lightFrequency, clockDrift });
+        if (isBotSignature) {
+          console.warn(`[🤖 AI BLOCKER] Synthetic device emulation predicted. Adding ${deviceFingerprint} to block pool.`);
           BLACKLISTED_DEVICES.add(deviceFingerprint);
-          connection.send(JSON.stringify({ status: "BANNED", reason: "Physical telemetry anomaly triggered automated firewall block." }));
+          connection.send(JSON.stringify({ status: "BANNED", reason: "AI protective guard-rails detected bot simulation signature." }));
           return;
         }
 
+        // 2. Compute True Human Physical Presence against the Dynamic Chaos Matrix
         const isHuman = ChaosEngine.verifyPresence(token, { gyroWobble, lightFrequency, clockDrift }, MASTER_SECRET);
 
+        // 3. Open a rock-solid SQL atomic transaction path to secure revenue records
         clientDb = await pool.connect();
         await clientDb.query('BEGIN');
 
+        // Log the smartphone telemetry hit log entry
         await clientDb.query(
           'INSERT INTO "ValidationLog" (id, "enterpriseClientId", "deviceFingerprint", "isHuman", "chaosHash", "revenueGenerated", "timestamp") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())',
           [client.id, deviceFingerprint, isHuman, token, 0.00001]
         );
 
-        // Usage matrix depletion step (deducts 1 balance credit point per verified hit)
+        // Micro-billing ledger step (Deducts 1 micro-credit unit per validated check)
         const updateLedger = await clientDb.query(
           'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" - 1 WHERE id = $1 RETURNING *',
           [client.id]
@@ -85,6 +94,9 @@ fastify.register(async function (fastify) {
         await clientDb.query('COMMIT');
         const updatedClient = updateLedger.rows[0];
 
+        console.log(`[💸 SECURED & FIREWALLED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
+
+        // 4. Return secure verification proof back to the smartphone screen runtime
         connection.send(JSON.stringify({ 
           status: "SUCCESS", 
           authenticated: isHuman, 
@@ -101,32 +113,30 @@ fastify.register(async function (fastify) {
   });
 });
 
-// ─── ENDPOINT 2: STRIPE AUTONOMOUS CREDIT TOP-UP WEBHOOK ───
-// This route fires automatically when an enterprise client purchases API capacity packages
+// ─── ENDPOINT 2: STRIPE AUTONOMOUS CREDIT TOP-UP WEBHOOK (HTTP POST) ───
 fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (request, reply) => {
   const sig = request.headers['stripe-signature'] as string;
   let event;
 
   try {
-    // In production, verify the webhook source integrity directly using Stripe keys
     const bodyStr = JSON.stringify(request.body);
     event = stripe.webhooks.constructEvent(bodyStr, sig, process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test');
   } catch (err: any) {
     return reply.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle successful credit transactions seamlessly 24/7
+  // Handle successful billing checkouts autonomously 24/7
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as any;
     const clientApiKey = session.metadata.apiKey;
-    const purchasedCreditsCents = session.amount_total; // Map direct purchase volume to credit allocation
+    const purchasedCreditsCents = session.amount_total;
 
     try {
       await pool.query(
         'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" + $1 WHERE "apiKey" = $2',
         [purchasedCreditsCents, clientApiKey]
       );
-      console.log(`[💰 STRIPE PAYMENT SECURED] Credited $${(purchasedCreditsCents / 100).toFixed(2)} capacity units to API: ${clientApiKey}`);
+      console.log(`[💰 STRIPE SECURED] Credited $${(purchasedCreditsCents / 100).toFixed(2)} capacity units to API key: ${clientApiKey}`);
     } catch (dbErr) {
       console.error('Failed to sync incoming transaction matrix to storage layer:', dbErr);
     }
@@ -135,14 +145,15 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
   reply.status(200).send({ received: true });
 });
 
+// START THE SYSTEM RUNTIME ENGINE
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
     await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`\n🚀 NEXORA GRAVITY RUNNING METRIC REVENUE ENGINE WITH INTEGRATED STRIPE LINKS`);
-    console.log(`================================================================================`);
-    console.log(`Active API Stream Input: ws://localhost:8080/gravity-stream`);
-    console.log(`Webhook Billing Target:  http://localhost:8080/v1/billing/webhook\n`);
+    console.log(`\n🚀 NEXORA GRAVITY RUNNING SAFELY ON NATIVE ENGINE WITH AI DETECTORS`);
+    console.log(`========================================================================`);
+    console.log(`Connected directly to PostgreSQL cluster bypassing broken CLI dependencies.`);
+    console.log(`Active Stream Input: ws://localhost:8080/gravity-stream\n`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
