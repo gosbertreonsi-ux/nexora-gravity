@@ -1,9 +1,8 @@
 import WebSocket from 'ws';
 import crypto from 'crypto';
-import http from 'http';
+import https from 'https'; // FIXED: Upgraded from 'http' to secure 'https'
 
-const SERVER_HOST = 'localhost';
-const SERVER_PORT = 8080;
+const SERVER_HOST = 'nexora-gravity-production.up.railway.app';
 const MASTER_SECRET = "nexora_absolute_entropy_shield_2026";
 
 console.log('⚡ NEXORA Gravity Dynamic Device Fleet Simulator Initializing...');
@@ -20,7 +19,7 @@ const signupPayload = JSON.stringify({
 
 const signupOptions = {
   hostname: SERVER_HOST,
-  port: SERVER_PORT,
+  port: 443, // Secure SSL Port
   path: '/v1/auth/signup',
   method: 'POST',
   headers: {
@@ -29,8 +28,8 @@ const signupOptions = {
   }
 };
 
-// Phase 1: Fire an automated registration handshake to harvest a live secure API key
-const signupReq = http.request(signupOptions, (res) => {
+// Phase 1: Fire an automated registration handshake across secure HTTPS to harvest a live key
+const signupReq = https.request(signupOptions, (res) => {
   let rawData = '';
   res.on('data', (chunk) => { rawData += chunk; });
   res.on('end', () => {
@@ -38,11 +37,11 @@ const signupReq = http.request(signupOptions, (res) => {
       const authData = JSON.parse(rawData);
       if (authData.status === "SUCCESS") {
         const harvestedApiKey = authData.apiKey;
-        console.log(`\n🔑 [AUTH HANDSHAKE SUCCESS] Dynamic Corporate Token Secured!`);
+        console.log(`\n🔑 [CLOUD AUTH SUCCESS] Dynamic Corporate Token Secured!`);
         console.log(`🏢 Entity: ${authData.companyName}`);
         console.log(`🎫 Active Key: ${harvestedApiKey}\n`);
         
-        // Phase 2: Instantly spin up smartphone telemetry loops using the harvested key
+        // Phase 2: Instantly spin up smartphone telemetry loops using secure WebSockets
         startDeviceSimulation(harvestedApiKey);
       } else {
         console.error('❌ Authentication block validation drop:', authData.message);
@@ -54,7 +53,7 @@ const signupReq = http.request(signupOptions, (res) => {
 });
 
 signupReq.on('error', (err) => {
-  console.error('❌ Core auth network channel unreachable:', err.message);
+  console.error('❌ Core cloud auth channel unreachable:', err.message);
 });
 signupReq.write(signupPayload);
 signupReq.end();
@@ -72,13 +71,13 @@ function generateSimulatedToken(gyro: number, light: number, drift: number): str
 }
 
 function startDeviceSimulation(activeApiKey: string) {
-  const SERVER_URL = `ws://${SERVER_HOST}:${SERVER_PORT}/gravity-stream`;
+  // FIXED: Uses wss:// for secure cloud WebSocket handshakes
+  const SERVER_URL = `wss://${SERVER_HOST}/gravity-stream`;
   const ws = new WebSocket(SERVER_URL);
 
   ws.on('open', () => {
-    console.log('🟢 Connected to NEXORA Ingestion Core. Initializing global device stream...');
+    console.log('🟢 Securely linked to NEXORA Cloud Ingestion Core. Ingress loop active...');
 
-    // Simulate a smartphone firing telemetry spikes every 1.5 seconds
     setInterval(() => {
       const gyroWobble = 0.001234 + (Math.random() - 0.5) * 0.0001;
       const lightFrequency = 59.98 + (Math.random() - 0.5) * 0.05;
@@ -106,6 +105,6 @@ function startDeviceSimulation(activeApiKey: string) {
   });
 
   ws.on('close', () => {
-    console.log('裁 Stream pipeline dropped. Attempting automated reconnection block...');
+    console.log('🔴 Stream pipeline dropped. Attempting automated reconnection block...');
   });
 }
