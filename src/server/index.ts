@@ -10,7 +10,6 @@ import { MonitorAgent } from '../telemetry/monitorAgent';
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
 
-// ─── PLUG-IN REGISTRATION & NETWORK OVERLAYS ───
 fastify.register(fastifyCors, {
   origin: "*", 
   methods: ["GET", "POST", "PUT", "DELETE"]
@@ -18,7 +17,6 @@ fastify.register(fastifyCors, {
 
 fastify.register(fastifyWebsocket);
 
-// ─── RESOURCE INFRASTRUCTURE BINDINGS ───
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://postgres:1971@localhost:5432/nexora_gravity?schema=public"
 });
@@ -31,68 +29,67 @@ const MASTER_SECRET = process.env.MASTER_SECRET || "nexora_absolute_entropy_shie
 const BLACKLISTED_DEVICES = new Set<string>(); 
 
 interface TelemetryPayload {
-  apiKey: string;
+  apiKey?: string;
+  action?: string;
   deviceFingerprint: string;
-  gyroWobble: number;
-  lightFrequency: number;
-  clockDrift: number;
-  token: string;
+  gyroWobble?: number;
+  lightFrequency?: number;
+  clockDrift?: number;
+  token?: string;
 }
 
-// ─── ENDPOINT 1: THE CORE AUTOMATED STREAMING LEDGER (WEBSOCKET) ───
 fastify.register(async function (fastify) {
   fastify.get('/gravity-stream', { websocket: true }, (connection, req) => {
     connection.on('message', async (message) => {
       let clientDb;
       try {
         const payload: TelemetryPayload = JSON.parse(message.toString());
-        const { apiKey, deviceFingerprint, gyroWobble, lightFrequency, clockDrift, token } = payload;
+        const { apiKey, action, deviceFingerprint, gyroWobble, lightFrequency, clockDrift, token } = payload;
 
-        // SECURITY CHECK 1: Immediate Blacklist/Firewall Check
+        // NEW LOGIC CORE: PROCESS MANUAL FRONTEND BAN FIREWALL SUBMISSIONS OVER SOCKETS
+        if (action === "MANUAL_BAN_OVERRIDE") {
+          console.warn(`[🚨 MANUAL OVERRIDE OVER SYSTEM] Administrator banned target device fingerprint node: ${deviceFingerprint}`);
+          BLACKLISTED_DEVICES.add(deviceFingerprint);
+          return;
+        }
+
         if (BLACKLISTED_DEVICES.has(deviceFingerprint)) {
           connection.send(JSON.stringify({ status: "BLOCKED", reason: "Device blacklisted." }));
           connection.terminate();
           return;
         }
 
-        // SECURITY CHECK 2: Validate Client API Key Authenticity
         const clientCheck = await pool.query('SELECT * FROM "EnterpriseClient" WHERE "apiKey" = $1 LIMIT 1', [apiKey]);
         const client = clientCheck.rows[0]; 
 
         if (!client) {
-          connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key Signature Grid" }));
+          connection.send(JSON.stringify({ status: "REJECTED", reason: "Unauthorized API Key" }));
           return;
         }
 
-        // SECURITY CHECK 3: Enforce Pre-paid Balance Limits
         if (BigInt(client.balanceCents) <= 0n) {
-          connection.send(JSON.stringify({ status: "REJECTED", reason: "Insufficient Infrastructure Balance Credits" }));
+          connection.send(JSON.stringify({ status: "REJECTED", reason: "Insufficient Infrastructure Credits" }));
           return;
         }
 
-        // SECURITY CHECK 4: Advanced AI/ML Predictive Worker Filter
-        const isBotSignature = AIPredicativeWorker.shouldIsolateDevice({ gyroWobble, lightFrequency, clockDrift });
+        const isBotSignature = AIPredicativeWorker.shouldIsolateDevice({ gyroWobble: gyroWobble || 0, lightFrequency: lightFrequency || 0, clockDrift: clockDrift || 0 });
         if (isBotSignature) {
           console.warn(`[🤖 AI BLOCKER] Synthetic device emulation predicted. Adding ${deviceFingerprint} to block pool.`);
           BLACKLISTED_DEVICES.add(deviceFingerprint);
-          connection.send(JSON.stringify({ status: "BANNED", reason: "AI protective guard-rails detected bot simulation signature." }));
+          connection.send(JSON.stringify({ status: "BANNED", reason: "AI filters locked device." }));
           return;
         }
 
-        // 2. Compute True Human Physical Presence against the Dynamic Chaos Matrix
-        const isHuman = ChaosEngine.verifyPresence(token, { gyroWobble, lightFrequency, clockDrift }, MASTER_SECRET);
+        const isHuman = ChaosEngine.verifyPresence(token || "", { gyroWobble: gyroWobble || 0, lightFrequency: lightFrequency || 0, clockDrift: clockDrift || 0 }, MASTER_SECRET);
 
-        // 3. Open a rock-solid SQL atomic transaction path to secure revenue records
         clientDb = await pool.connect();
         await clientDb.query('BEGIN');
 
-        // Log the smartphone telemetry hit log entry
         await clientDb.query(
           'INSERT INTO "ValidationLog" (id, "enterpriseClientId", "deviceFingerprint", "isHuman", "chaosHash", "revenueGenerated", "timestamp") VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())',
           [client.id, deviceFingerprint, isHuman, token, 0.00001]
         );
 
-        // Micro-billing ledger step (Deducts 1 micro-credit unit per validated check)
         const updateLedger = await clientDb.query(
           'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" - 1 WHERE id = $1 RETURNING *',
           [client.id]
@@ -101,9 +98,6 @@ fastify.register(async function (fastify) {
         await clientDb.query('COMMIT');
         const updatedClient = updateLedger.rows[0];
 
-        console.log(`[💸 SECURED & FIREWALLED] ${updatedClient.companyName} | Balance Units: ${updatedClient.balanceCents}`);
-
-        // 4. Return secure verification proof back to the smartphone screen runtime and Next.js view
         connection.send(JSON.stringify({ 
           status: "SUCCESS", 
           authenticated: isHuman, 
@@ -121,12 +115,10 @@ fastify.register(async function (fastify) {
   });
 });
 
-// ─── ENDPOINT 2: STRIPE AUTONOMOUS CREDIT TOP-UP WEBHOOK (HTTP POST) ───
 fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (request, reply) => {
   const sig = request.headers['stripe-signature'] as string;
   const payload = request.body as any;
 
-  // BYPASS CRITICAL VERIFICATION FOR ENVIRONMENT STAGING AND SIMULATION FLEETS ONLY
   if (sig === 't=123,v1=mock_signature_hash_data') {
     const clientApiKey = payload.data.object.metadata.apiKey;
     const purchasedCreditsCents = payload.data.object.amount_total;
@@ -139,39 +131,13 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
       console.log(`[💰 MOCK STRIPE TOP-UP] Credited $${(purchasedCreditsCents / 100).toFixed(2)} to client key: ${clientApiKey}`);
       return reply.status(200).send({ received: true });
     } catch (dbErr) {
-      console.error('Failed to sync incoming transaction matrix:', dbErr);
       return reply.status(500).send("Database sync crash");
-    }
-  }
-
-  // Production Stripe Verification Channel fallback block
-  let event;
-  try {
-    const bodyStr = JSON.stringify(request.body);
-    event = stripe.webhooks.constructEvent(bodyStr, sig, process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test');
-  } catch (err: any) {
-    return reply.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as any;
-    const clientApiKey = session.metadata.apiKey;
-    const purchasedCreditsCents = session.amount_total;
-
-    try {
-      await pool.query(
-        'UPDATE "EnterpriseClient" SET "balanceCents" = "balanceCents" + $1 WHERE "apiKey" = $2',
-        [purchasedCreditsCents, clientApiKey]
-      );
-    } catch (dbErr) {
-      console.error(dbErr);
     }
   }
 
   reply.status(200).send({ received: true });
 });
 
-// ─── START THE SYSTEM RUNTIME ENGINE ───
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
@@ -181,13 +147,9 @@ const start = async () => {
     console.log(`Connected directly to PostgreSQL cluster bypassing broken CLI dependencies.`);
     console.log(`Active Stream Input: ws://localhost:8080/gravity-stream\n`);
 
-    // Optimize database storage and lookup layers right at launch
-    console.log("⚡ Optimizing database memory indexes...");
     await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
-    console.log("✅ Database performance indexes compiled and deployed successfully!");
 
-    // Schedule automated hardware and performance health loops to execute every 5 seconds
     setInterval(() => {
       MonitorAgent.sampleSystemVitals();
     }, 5000);
