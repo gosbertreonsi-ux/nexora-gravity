@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  nexora-engine:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://postgres:secure_entropy_pass_2026@postgres-cluster:5432/nexora_gravity?schema=public
+      - PORT=8085
+      - MASTER_SECRET=nexora_absolute_entropy_shield_2026
+    depends_on:
+      - postgres-cluster
+
+  postgres-cluster:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=secure_entropy_pass_2026
+      - POSTGRES_DB=nexora_gravity
+    ports:
+      - "5432:5432"
+    volumes:
+      - nexora-data-cluster:/var/lib/postgresql/data
+
+volumes:
+  nexora-data-cluster:
