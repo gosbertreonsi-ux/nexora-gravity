@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/formbody": "^9.0.0",
     "@fastify/websocket": "^11.3.0",
     "@prisma/client": "^7.10.0",
     "@types/pg": "^8.23.1",
