@@ -1,4 +1,4 @@
-name: NEXORA Gravity CI/CD Engine
+name: NEXORA Gravity Production CI-CD Matrix
 
 on:
   push:
@@ -7,32 +7,33 @@ on:
     branches: [ main ]
 
 jobs:
-  verify-and-build:
+  verify-and-compile:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout your code repository from GitHub onto the Linux runner
+    # 1. Pull the codebase from your GitHub repository onto the isolated Linux node
     - name: Checkout Code Repository
       uses: actions/checkout@v4
 
-    # 2. Set up an isolated Node.js environment
+    # 2. Build a sandboxed Node.js environment layer
     - name: Set up Node.js Environment
       uses: actions/setup-node@v4
       with:
         node-version: 20
         cache: 'npm'
 
-    # 3. Clean install all platform dependencies 
+    # 3. Clean-install corporate node module dependencies safely
     - name: Install System Dependencies
       run: npm ci
 
-    # 4. Compile and verify TypeScript formatting integrity 
-    - name: Verify TypeScript Compilation
+    # 4. Enforce strict TypeScript verification checks without emitting broken output variables
+    - name: Run TypeScript Target Verification
       run: npx tsc --noEmit
 
-    # 5. Build and dry-run test the multi-stage production Docker image
-    - name: Build Production Docker Image
-      run: docker build -t nexora-gravity-engine:latest .
-      
-    - name: Systems Integrity Status
+    # 5. Build and dry-run verify the multi-stage production Docker image profile
+    - name: Build Production Docker Container
+      run: docker build -t nexora-gravity-core:latest .
+
+    # 6. Pipeline health output confirmation log
+    - name: Log Execution Status
       run: echo "🚀 NEXORA core pipeline compiled, containerized, and passed authentication checkpoints seamlessly!"
