@@ -19,7 +19,7 @@ fastify.register(fastifyWebsocket);
 
 // ADAPTIVE DATABASE STRING: Uses the live cloud URL variable on Railway, fallbacks locally
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://postgres:1971@localhost:5432/nexora_gravity?schema=public"
+  connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/nexora_gravity?schema=public"
 });
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock_secret_key_123', { apiVersion: '2023-10-16' as any });
@@ -202,15 +202,17 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
   reply.status(200).send({ received: true });
 });
 
+// DELAYED START WITH SELF-HEALING SCHEMAS
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
-    // Binds to 0.0.0.0 to satisfy cloud runtime mapping regulations
     await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`\n🚀 NEXORA GRAVITY ONLINE WITH ACCREDITED AUTH SIGNUPS`);
+    console.log(`\n🚀 NEXORA GRAVITY RE-CONNECTING IN CLOUD STAGING MODE`);
     console.log(`========================================================================`);
     
-    // Auto-generate necessary tables inside the clean cloud schema environment automatically at boot
+    // Give Railway database clusters a brief 4-second safety gap to initialize handshakes fully
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "EnterpriseClient" (
         id UUID PRIMARY KEY,
@@ -238,12 +240,12 @@ const start = async () => {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
     
-    // Starts monitor agent loop
+    console.log("✅ Database infrastructure layers established and indexed safely!");
     setInterval(() => { MonitorAgent.sampleSystemVitals(); }, 5000);
   } catch (err: any) {
-    console.error("Fatal startup crash: ", err.message);
-    process.exit(1);
+    console.error("❌ Server startup crash:", err.message);
   }
-};
 
+  setTimeout(() => { start(); }, 5000); }
+  
 start();
