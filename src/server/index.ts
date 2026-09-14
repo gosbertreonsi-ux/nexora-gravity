@@ -202,50 +202,57 @@ fastify.post('/v1/billing/webhook', { config: { rawBody: true } }, async (reques
   reply.status(200).send({ received: true });
 });
 
-// DELAYED START WITH SELF-HEALING SCHEMAS
+// ─── START THE SYSTEM RUNTIME ENGINE ───
 const start = async () => {
   try {
     const port = Number(process.env.PORT) || 8080;
+    
+    // 1. Establish the network port channel boundary cleanly first
     await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`\n🚀 NEXORA GRAVITY RE-CONNECTING IN CLOUD STAGING MODE`);
+    console.log(`\n🚀 NEXORA GRAVITY RUNNING LIVE ON GLOBAL CLOUD NETWORKS`);
     console.log(`========================================================================`);
-    
-    // Give Railway database clusters a brief 4-second safety gap to initialize handshakes fully
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    console.log(`Active Stream Input Channel opened on port: ${port}\n`);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "EnterpriseClient" (
-        id UUID PRIMARY KEY,
-        "companyName" TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        "apiKey" TEXT UNIQUE NOT NULL,
-        "balanceCents" BIGINT DEFAULT 500000,
-        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
+    // 2. Safely generate and optimize backend storage structural matrices
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "EnterpriseClient" (
+          id UUID PRIMARY KEY,
+          "companyName" TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          "apiKey" TEXT UNIQUE NOT NULL,
+          "balanceCents" BIGINT DEFAULT 500000,
+          "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
 
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "ValidationLog" (
-        id UUID PRIMARY KEY,
-        "enterpriseClientId" UUID REFERENCES "EnterpriseClient"(id),
-        "deviceFingerprint" TEXT NOT NULL,
-        "isHuman" BOOLEAN NOT NULL,
-        "chaosHash" TEXT NOT NULL,
-        "revenueGenerated" DOUBLE PRECISION DEFAULT 0.00001,
-        timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-      );
-    `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "ValidationLog" (
+          id UUID PRIMARY KEY,
+          "enterpriseClientId" UUID REFERENCES "EnterpriseClient"(id),
+          "deviceFingerprint" TEXT NOT NULL,
+          "isHuman" BOOLEAN NOT NULL,
+          "chaosHash" TEXT NOT NULL,
+          "revenueGenerated" DOUBLE PRECISION DEFAULT 0.00001,
+          timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `);
 
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
-    
-    console.log("✅ Database infrastructure layers established and indexed safely!");
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_enterprise_apikey ON "EnterpriseClient"("apiKey");');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_validation_device ON "ValidationLog"("deviceFingerprint");');
+      console.log("✅ Database infrastructure layers established and indexed safely!");
+    } catch (dbErr: any) {
+      console.error("⚠️ Background Database Setup Warning:", dbErr.message);
+    }
+
+    // 3. Kick off your automated systems vitals agent monitor interval loops
     setInterval(() => { MonitorAgent.sampleSystemVitals(); }, 5000);
-  } catch (err: any) {
-    console.error("❌ Server startup crash:", err.message);
-  }
 
-  setTimeout(() => { start(); }, 5000); }
-  
+  } catch (err: any) {
+    console.error("❌ Fatal port crash encountered:", err.message);
+    process.exit(1);
+  }
+};
+
 start();
