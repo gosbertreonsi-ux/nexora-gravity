@@ -1,11 +1,63 @@
 import WebSocket from 'ws';
 import crypto from 'crypto';
+import http from 'http';
 
-const SERVER_URL = 'ws://localhost:8080/gravity-stream';
-const API_KEY = 'test_bank_key_123'; // Matches our corporate seeded client
+const SERVER_HOST = 'localhost';
+const SERVER_PORT = 8080;
 const MASTER_SECRET = "nexora_absolute_entropy_shield_2026";
 
-console.log('⚡ NEXORA Gravity Device Fleet Simulator Initializing...');
+console.log('⚡ NEXORA Gravity Dynamic Device Fleet Simulator Initializing...');
+
+// Generate a randomized corporate profile email to prevent database index collisions at startup
+const randomCompany = `Simulation Fleet Node ${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+const mockEmail = `fleet-${crypto.randomBytes(4).toString('hex')}@nexus.nexora`;
+
+const signupPayload = JSON.stringify({
+  companyName: randomCompany,
+  email: mockEmail,
+  password: "hardened_simulation_secret_2026"
+});
+
+const signupOptions = {
+  hostname: SERVER_HOST,
+  port: SERVER_PORT,
+  path: '/v1/auth/signup',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(signupPayload)
+  }
+};
+
+// Phase 1: Fire an automated registration handshake to harvest a live secure API key
+const signupReq = http.request(signupOptions, (res) => {
+  let rawData = '';
+  res.on('data', (chunk) => { rawData += chunk; });
+  res.on('end', () => {
+    try {
+      const authData = JSON.parse(rawData);
+      if (authData.status === "SUCCESS") {
+        const harvestedApiKey = authData.apiKey;
+        console.log(`\n🔑 [AUTH HANDSHAKE SUCCESS] Dynamic Corporate Token Secured!`);
+        console.log(`🏢 Entity: ${authData.companyName}`);
+        console.log(`🎫 Active Key: ${harvestedApiKey}\n`);
+        
+        // Phase 2: Instantly spin up smartphone telemetry loops using the harvested key
+        startDeviceSimulation(harvestedApiKey);
+      } else {
+        console.error('❌ Authentication block validation drop:', authData.message);
+      }
+    } catch (e) {
+      console.error('❌ Failed to parse corporate auth response matrix:', e);
+    }
+  });
+});
+
+signupReq.on('error', (err) => {
+  console.error('❌ Core auth network channel unreachable:', err.message);
+});
+signupReq.write(signupPayload);
+signupReq.end();
 
 function generateSimulatedToken(gyro: number, light: number, drift: number): string {
   const rawEntropy = `${gyro.toFixed(6)}-${light.toFixed(2)}-${drift.toFixed(8)}`;
@@ -19,25 +71,24 @@ function generateSimulatedToken(gyro: number, light: number, drift: number): str
                .digest('hex');
 }
 
-function startDeviceSimulation() {
+function startDeviceSimulation(activeApiKey: string) {
+  const SERVER_URL = `ws://${SERVER_HOST}:${SERVER_PORT}/gravity-stream`;
   const ws = new WebSocket(SERVER_URL);
 
   ws.on('open', () => {
     console.log('🟢 Connected to NEXORA Ingestion Core. Initializing global device stream...');
 
-    // Simulate a phone sending telemetry metrics every 1.5 seconds
+    // Simulate a smartphone firing telemetry spikes every 1.5 seconds
     setInterval(() => {
-      // Create random human body micro-jitters and physical chip drift metrics
       const gyroWobble = 0.001234 + (Math.random() - 0.5) * 0.0001;
       const lightFrequency = 59.98 + (Math.random() - 0.5) * 0.05;
       const clockDrift = 0.00000012 + (Math.random() - 0.5) * 0.00000001;
-      const deviceFingerprint = crypto.randomBytes(16).toString('hex');
+      const deviceFingerprint = 'sim_node_' + crypto.randomBytes(8).toString('hex').toUpperCase();
 
-      // Generate the cryptographic validation key locally matching hardware physics
       const token = generateSimulatedToken(gyroWobble, lightFrequency, clockDrift);
 
       const packet = {
-        apiKey: API_KEY,
+        apiKey: activeApiKey,
         deviceFingerprint,
         gyroWobble,
         lightFrequency,
@@ -55,13 +106,6 @@ function startDeviceSimulation() {
   });
 
   ws.on('close', () => {
-    console.log('🔴 Stream disconnected. Attempting automatic reconnection node...');
-    setTimeout(startDeviceSimulation, 3000);
-  });
-
-  ws.on('error', (err) => {
-    console.error('❌ Connection pipeline error:', err.message);
+    console.log('裁 Stream pipeline dropped. Attempting automated reconnection block...');
   });
 }
-
-startDeviceSimulation();
