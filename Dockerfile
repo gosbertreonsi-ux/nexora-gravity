@@ -2,9 +2,11 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
+# Clean install packages including dev dependencies
 RUN npm install
 COPY . .
-RUN npx tsc
+# FIXED: Instruct the compiler to transpile raw source files without failing on ambient path warnings
+RUN npx tsc --skipLibCheck --declaration false
 
 # Stage 2: Minimalist production runtime phase using identical Node 22
 FROM node:22-alpine AS runner
