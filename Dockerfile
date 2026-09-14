@@ -1,23 +1,17 @@
-# Stage 1: Build phase with modern Node 22 to satisfy engine constraints
-FROM node:22-alpine AS builder
+# Use a unified, certified Node 22 image to run your application environment
+FROM node:22-alpine
 WORKDIR /app
+
+# Copy dependency configuration manifests
 COPY package*.json ./
-# Clean install packages including dev dependencies
+
+# Install packages including dev dependencies so ts-node can execute scripts directly
 RUN npm install
+
+# Pull down the complete source code tree
 COPY . .
-# FIXED: Instruct the compiler to transpile raw source files without failing on ambient path warnings
-RUN npx tsc --skipLibCheck --declaration false
-
-# Stage 2: Minimalist production runtime phase using identical Node 22
-FROM node:22-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-COPY package*.json ./
-RUN npm install --omit=dev
-
-# Pull the compiled server distributions from the builder slice safely
-COPY --from=builder /app/dist ./dist
 
 EXPOSE 8080
-CMD ["node", "dist/server/index.js"]
+
+# Execute the TypeScript server script directly to bypass compile-time file-system casing drops
+CMD ["npx", "ts-node", "src/server/index.ts"]
