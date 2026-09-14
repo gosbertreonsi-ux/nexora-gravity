@@ -1,15 +1,16 @@
 import WebSocket from 'ws';
 import crypto from 'crypto';
-import https from 'https'; // FIXED: Upgraded from 'http' to secure 'https'
+import https from 'https';
 
 const SERVER_HOST = 'nexora-gravity-production.up.railway.app';
 const MASTER_SECRET = "nexora_absolute_entropy_shield_2026";
 
 console.log('⚡ NEXORA Gravity Dynamic Device Fleet Simulator Initializing...');
 
-// Generate a randomized corporate profile email to prevent database index collisions at startup
-const randomCompany = `Simulation Fleet Node ${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-const mockEmail = `fleet-${crypto.randomBytes(4).toString('hex')}@nexus.nexora`;
+// Generate fully isolated corporate parameters
+const uniqueId = crypto.randomBytes(8).toString('hex').toUpperCase();
+const randomCompany = `Simulation Fleet Node ${uniqueId}`;
+const mockEmail = `fleet-${uniqueId.toLowerCase()}@nexus.nexora`;
 
 const signupPayload = JSON.stringify({
   companyName: randomCompany,
@@ -19,11 +20,12 @@ const signupPayload = JSON.stringify({
 
 const signupOptions = {
   hostname: SERVER_HOST,
-  port: 443, // Secure SSL Port
+  port: 443,
   path: '/v1/auth/signup',
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
     'Content-Length': Buffer.byteLength(signupPayload)
   }
 };
@@ -44,10 +46,11 @@ const signupReq = https.request(signupOptions, (res) => {
         // Phase 2: Instantly spin up smartphone telemetry loops using secure WebSockets
         startDeviceSimulation(harvestedApiKey);
       } else {
-        console.error('❌ Authentication block validation drop:', authData.message);
+        console.error('❌ Authentication block validation drop:', authData.message || rawData);
       }
     } catch (e) {
       console.error('❌ Failed to parse corporate auth response matrix:', e);
+      console.log('Raw Server Response was:', rawData);
     }
   });
 });
@@ -71,7 +74,6 @@ function generateSimulatedToken(gyro: number, light: number, drift: number): str
 }
 
 function startDeviceSimulation(activeApiKey: string) {
-  // FIXED: Uses wss:// for secure cloud WebSocket handshakes
   const SERVER_URL = `wss://${SERVER_HOST}/gravity-stream`;
   const ws = new WebSocket(SERVER_URL);
 
