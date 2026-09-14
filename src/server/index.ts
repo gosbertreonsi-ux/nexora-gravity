@@ -3,7 +3,8 @@ import fastifyWebsocket from '@fastify/websocket';
 import pg from 'pg';
 import Stripe from 'stripe';
 import { ChaosEngine } from '../crypto/chaosEngine';
-import { AIPredicativeWorker } from '../ai/predictiveWorker';
+import { AIPredicativeWorker } from '../ai/predictiveWorker.js';
+
 
 const { Pool } = pg;
 const fastify = Fastify({ logger: true });
