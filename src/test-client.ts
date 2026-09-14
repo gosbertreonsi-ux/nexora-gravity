@@ -1,35 +1,37 @@
 import WebSocket from 'ws';
 import crypto from 'crypto';
-import https from 'https';
+import http from 'http'; // Local use uses standard unencrypted HTTP/WS channels
 
-const SERVER_HOST = 'nexora-gravity-production.up.railway.app';
+const SERVER_HOST = 'localhost';
+const SERVER_PORT = 8080;
 const MASTER_SECRET = "nexora_absolute_entropy_shield_2026";
 
 console.log('⚡ NEXORA Gravity Dynamic Device Fleet Simulator Initializing...');
 
-const uniqueId = crypto.randomBytes(8).toString('hex').toUpperCase();
+// Generate a randomized corporate profile email to prevent local database collisions at startup
+const uniqueId = crypto.randomBytes(6).toString('hex').toUpperCase();
 const randomCompany = `Simulation Fleet Node ${uniqueId}`;
 const mockEmail = `fleet-${uniqueId.toLowerCase()}@nexus.nexora`;
 
-// Encode data into clean form-urlencoded layout to match cloud firewalls
-const signupPayload = new URLSearchParams({
+const signupPayload = JSON.stringify({
   companyName: randomCompany,
   email: mockEmail,
   password: "hardened_simulation_secret_2026"
-}).toString();
+});
 
 const signupOptions = {
   hostname: SERVER_HOST,
-  port: 443,
+  port: SERVER_PORT,
   path: '/v1/auth/signup',
   method: 'POST',
   headers: {
-    'Content-Type': 'application/x-www-form-urlencoded',
+    'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(signupPayload)
   }
 };
 
-const signupReq = https.request(signupOptions, (res) => {
+// Phase 1: Fire an automated local registration handshake to harvest a live secure API key
+const signupReq = http.request(signupOptions, (res) => {
   let rawData = '';
   res.on('data', (chunk) => { rawData += chunk; });
   res.on('end', () => {
@@ -37,10 +39,11 @@ const signupReq = https.request(signupOptions, (res) => {
       const authData = JSON.parse(rawData);
       if (authData.status === "SUCCESS") {
         const harvestedApiKey = authData.apiKey;
-        console.log(`\n🔑 [CLOUD AUTH SUCCESS] Dynamic Corporate Token Secured!`);
+        console.log(`\n🔑 [AUTH HANDSHAKE SUCCESS] Local Dynamic Corporate Token Secured!`);
         console.log(`🏢 Entity: ${authData.companyName}`);
         console.log(`🎫 Active Key: ${harvestedApiKey}\n`);
         
+        // Phase 2: Instantly spin up smartphone telemetry loops using the harvested key
         startDeviceSimulation(harvestedApiKey);
       } else {
         console.error('❌ Authentication block validation drop:', authData.message || rawData);
@@ -52,7 +55,7 @@ const signupReq = https.request(signupOptions, (res) => {
 });
 
 signupReq.on('error', (err) => {
-  console.error('❌ Core cloud auth channel unreachable:', err.message);
+  console.error('❌ Core local backend engine unreachable. Ensure server index.ts is running!', err.message);
 });
 signupReq.write(signupPayload);
 signupReq.end();
@@ -70,12 +73,13 @@ function generateSimulatedToken(gyro: number, light: number, drift: number): str
 }
 
 function startDeviceSimulation(activeApiKey: string) {
-  const SERVER_URL = `wss://${SERVER_HOST}/gravity-stream`;
+  const SERVER_URL = `ws://${SERVER_HOST}:${SERVER_PORT}/gravity-stream`;
   const ws = new WebSocket(SERVER_URL);
 
   ws.on('open', () => {
-    console.log('🟢 Securely linked to NEXORA Cloud Ingestion Core. Ingress loop active...');
+    console.log('🟢 Connected to NEXORA Ingestion Core. Local device stream running...');
 
+    // Simulate a smartphone firing telemetry spikes every 1.5 seconds
     setInterval(() => {
       const gyroWobble = 0.001234 + (Math.random() - 0.5) * 0.0001;
       const lightFrequency = 59.98 + (Math.random() - 0.5) * 0.05;
